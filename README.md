@@ -17,7 +17,7 @@ To protect security and privacy the remaining data on empty space on disks has t
 
 **Example** \
 // Write 10 files and 10Mb data, on NTFS  \
-overwrite -files:10 -data:10mb -path:c:\  \
+overwrite -files:10 -data:10mb -path:c:\
 
 // Write random data, block size 512 bytes on FAT FS  \
 overwrite -rand -block:512 -files:10 -data:10mb -path:/mnt/usbdisk/
