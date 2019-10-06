@@ -6,17 +6,19 @@ CODE:			github.com/ivoprogram/overwrite
 LICENSE:		GNU General Public License v3.0 http://www.gnu.org/licenses/gpl.html
 AUTHOR:			Ivo Gjorgjievski
 WEBSITE:		ivoprogram.github.io
-DATE:			2019-10-04
-VERSION:		1.0
+DATE:			2019-10-06
+VERSION:		1.1
 */
 
 // Include -----
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <time.h>
 #include <limits.h>
+#include <ctype.h>
 
 #ifdef _WIN32	// _WINDOWS
 // _mkdir, _rmdir windows
@@ -26,7 +28,6 @@ VERSION:		1.0
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <ctype.h>
 #endif
 
 
@@ -35,6 +36,7 @@ VERSION:		1.0
 #define DIR_NAME "temp123456789"	// Temporary directory name for files and data.
 #define FILE_NAME "000000000"		// Temporary file name for large data.
 #define FILE_PREFIX "000000000"		// File prefix for small temporary files.
+#define VERSION "Version 1.1 2019-10-06"	// Version
 
 
 // Arguments structure
@@ -46,10 +48,10 @@ struct args {
 	int files;				// Number of files to write
 	char *data;				// Data to write, mb, gb, all
 	char *path;				// Path where to write 
+	unsigned char *blockbuf;			// Block buffer init with calloc.
 
 	char dirpath[1024];		// Temp dir path.
 	char filepath[1024];	// Temp files path.
-	unsigned char *blockbuf;			// Block buffer init with calloc.
 
 };
 
@@ -58,9 +60,9 @@ struct args {
 struct args parseargs(int argc, char *argv[]);
 struct args prepargs(struct args argsv);
 int writefiles(struct args argsv);
-int writefile(char *filepath, char *buf, int bufsize);
+int writefile(char *filepath, unsigned char *buf, int bufsize);
 int writedata(struct args argsv);
-void cleardata(struct args argsv);
+void cleandata(struct args argsv);
 void freemem(struct args argsv);
 
 int makedir(const char* name);
@@ -89,7 +91,6 @@ int main(int argc, char *argv[])
 
 	// Init 
 	printf("\n");
-	srand((unsigned)time(NULL));
 	ticks = clock();
 
 	// Parse, prepare arguments
@@ -107,7 +108,7 @@ int main(int argc, char *argv[])
 	// Clear
 	freemem(argsv);
 	if(!argsv.test){
-		cleardata(argsv);
+		cleandata(argsv);
 	}
 
 	// Done
@@ -135,6 +136,7 @@ struct args parseargs(int argc, char *argv[])
 	argsv.blocksize = BLOCK_SIZE;
 	argsv.files = 0;
 	argsv.data = NULL;
+	argsv.path = NULL;
 	argsv.blockbuf = NULL;
 
 	strcpy(argsv.dirpath, "");
@@ -149,6 +151,12 @@ struct args parseargs(int argc, char *argv[])
 		// 
 		if(strstarti(argv[index], "-h") || strstarti(argv[index], "--help") ){ 
 			usage();
+			exit(0);
+		}
+		// 
+		else if(strstarti(argv[index], "-v") || strstarti(argv[index], "--version") ){ 
+			printf(VERSION);
+			printf("\n");
 			exit(0);
 		}
 		else if(strstarti(argv[index], "-test")){ 
@@ -210,17 +218,17 @@ struct args prepargs(struct args argsv)
 	int res = 0;
 
 	// Initialize blockbuf with calloc, set with 0.
-	argsv.blockbuf = (char*) calloc(argsv.blocksize, sizeof (char));
+	argsv.blockbuf = (unsigned char*) calloc(argsv.blocksize, sizeof (unsigned char));
 	errcheckptr(argsv.blockbuf, argsv, "Block buffer initialization error. ");
 	//printf("blockbuf %d \n", blockbuf);
 
-	// if one, set buffer with one's
+	// If one, set buffer with one's
 	if(argsv.one){ memset(argsv.blockbuf, 255, argsv.blocksize);  }
 
-	// if random set buffer with random data
+	// If random set buffer with random data
 	if(argsv.ran){ randbuf(argsv.blockbuf, argsv.blocksize); }
 
-	// prepare path
+	// Prepare path
 	strcat(argsv.dirpath, argsv.path);
 	if(!strendi(argsv.dirpath, "/") && !strendi(argsv.dirpath, "\\")){
 		strcat(argsv.dirpath, "/");
@@ -228,7 +236,7 @@ struct args prepargs(struct args argsv)
 	strcat(argsv.dirpath, DIR_NAME);
 	strcat(argsv.dirpath, "/");
 
-	// create temporary folder
+	// Create temporary folder
 	remdir(argsv.dirpath);
 	res = makedir(argsv.dirpath);
 	if(res == -1 && errno != 17) // Error 17, File exists.
@@ -246,9 +254,8 @@ int writefiles(struct args argsv)
 {
 	// 
 	int index;
-	int index2;
 	int res;
-	float stat = 0.1;
+	float stat = 0.1F;
 	char stri[16];
 
 
@@ -259,21 +266,21 @@ int writefiles(struct args argsv)
 	printf("Writing files: \n");
 	for(index = 1; index <= argsv.files; index++)
 	{
-		// filepath
+		// File path
 		sprintf(stri, "%d", index);
 		strcpy(argsv.filepath, argsv.dirpath);
 		strcat(argsv.filepath, FILE_PREFIX);
 		strcat(argsv.filepath, stri);
 
-		// writefile
+		// Writefile
 		res = writefile(argsv.filepath, argsv.blockbuf, argsv.blocksize);
 		if(res){ return -1; }
 
-		// statistics
+		// Statistics
 		if(index > argsv.files * stat)
 		{
 			printf("%.0f%% ", stat * 100 );
-			stat += 0.1;
+			stat += 0.1F;
 
 		}// if
 
@@ -285,7 +292,7 @@ int writefiles(struct args argsv)
 
 
 // writefile
-int writefile(char *filepath, char *buf, int bufsize)
+int writefile(char *filepath, unsigned char *buf, int bufsize)
 {
 	size_t rest;
 	int resi;
@@ -332,11 +339,11 @@ int writedata(struct args argsv)
 	else if(strstarti(argsv.data, "all")) { blocks = INT_MAX; }
 	else{ return 0; }
 
-	// statistics for all argument
+	// Statistics for -data:all argument
 	blockscont = (1024000 * 1024) / argsv.blocksize;
 	blockscont2 = blockscont;
 
-	// open file
+	// Open file
 	strcpy(argsv.filepath, argsv.dirpath);
 	strcat(argsv.filepath, FILE_NAME);
 	fp = fopen(argsv.filepath, "wb");
@@ -354,7 +361,7 @@ int writedata(struct args argsv)
 			return -1;
 		}
 
-		// statistics
+		// Statistics
 		if(blocks != INT_MAX && index > blocks * stat)
 		{
 			printf("%.0f%% ", stat * 100 );
@@ -362,7 +369,7 @@ int writedata(struct args argsv)
 
 		}// if
 
-		// statistics for all argument, up to 10gb
+		// Statistics for -data:all argument, up to 10gb
 		if(blocks == INT_MAX && cont < 10 && index >= blockscont2)
 		{
 			cont++;
@@ -380,14 +387,13 @@ int writedata(struct args argsv)
 }// 
 
 
-// cleardata
-void cleardata(struct args argsv)
+// cleandata
+void cleandata(struct args argsv)
 {
 	// 
 	int index;
-	int index2;
 	int res;
-	float stat = 0.1;
+	float stat = 0.1F;
 	char stri[16];
 
 	// Delete data file if exists
@@ -396,7 +402,7 @@ void cleardata(struct args argsv)
 	remove(argsv.filepath);
 
 	// Delete files
-	printf("Clearing: \n");
+	printf("Cleaning: \n");
 	for(index = 1; index <= argsv.files; index++)
 	{
 		// filepath
@@ -409,11 +415,11 @@ void cleardata(struct args argsv)
 		res = remove(argsv.filepath);
 		//errcheckint(res, argsv, "Error deleting file.");
 
-		// statistics
+		// Statistics
 		if(index > argsv.files * stat)
 		{
 			printf("%.0f%% ", stat * 100 );
-			stat += 0.1;
+			stat += 0.1F;
 
 		}// if
 
@@ -473,7 +479,7 @@ int remdir(const char* name)
 void randbuf(unsigned char *buf, int bufsize)
 {
 	int index;
-	//srand(time(NULL));	// Called in main
+	srand((unsigned)time(NULL));
 
 	for(index = 0; index < bufsize - 1; index++)
 	{
@@ -561,10 +567,11 @@ void errcheckptr(void *res, struct args argsv, char *message)
 void usage()
 {
 	printf(
-		"Overwrite empty space on disk, write number of small files and data. \n\n"
+		"Overwrite empty space on disk, write small files and data. \n\n"
 		"USAGE: \n"
-		"overwrite [-h -test -one -rand -block:] (-files: &| -data:) -path: \n"
+		"overwrite [-h -v -test -one -rand -block:] (-files: &| -data:) -path: \n"
 		"  -h \t\t Print help and usage message. \n"
+		"  -v \t\t Print program version. \n"
 		"  -test \t For test, don't delete written files. \n"
 		"  -one \t\t Overwrite with 1, default with 0. \n"
 		"  -rand \t Overwrite with random data, default with 0. \n"
@@ -573,9 +580,9 @@ void usage()
 		"  -data \t Quantity of data to write, ex: 1mb, 1gb, all. \n"
 		"  -path \t Path to directory where to write data. \n\n"
 		"EXAMPLE: \n"
-		"# Write 10 files and 10Mb data, on NTFS \n"
+		"# Write 10 files and 10Mb data, on Windows \n"
 		"overwrite -files:10 -data:10mb -path:c:\\ \n\n"
-		"# Write random data, block size 512 bytes on FAT FS \n"
+		"# Write random data, block size 512 bytes on Linux \n"
 		"overwrite -rand -block:512 -files:10 -data:10mb -path:/mnt/usbdisk/ \n\n"
 		"Copyright GPLv3 http://github.com/ivoprogram/overwrite \n"
 
